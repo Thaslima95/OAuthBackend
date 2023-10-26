@@ -75,6 +75,65 @@ app.post("/users/signup", async (req, res) => {
       .catch((err) => {
         res.status(400).json({ message: "Invalid access token!" });
       });
+  } else if (req.body.facebookAccessToken) {
+    const { facebookAccessToken } = req.body;
+    axios
+      .get(
+        "https://graph.facebook.com/v12.0/me?fields=first_name,last_name,email,picture",
+        {
+          headers: {
+            Authorization: `Bearer ${facebookAccessToken}`,
+          },
+        }
+      )
+      .then(async (response) => {
+        const firstName = response.data.first_name;
+        const lastName = response.data.last_name;
+        const email = response.data.email;
+        const picture = response.data.picture.data.url; // Get the URL of the profile picture
+
+        console.log(response.data);
+
+        const sql = "SELECT * FROM pyra_user WHERE email = ?";
+        const value = [[email]];
+
+        db.query(sql, [value], (err, data) => {
+          if (err) throw err;
+
+          if (data?.length > 0) {
+            return res.status(400).json({ message: "User already exists!" });
+          } else {
+            const insertSql = "INSERT INTO pyra_user (email) VALUES ?";
+            const insertValue = [[email]];
+
+            db.query(insertSql, [insertValue], (err, insertData) => {
+              if (err) throw err;
+
+              const result = {
+                verified: "true",
+                email,
+                firstName,
+                lastName,
+                profilePicture: picture,
+              };
+
+              const token = jwt.sign(
+                {
+                  email: email,
+                  id: insertData.insertId,
+                },
+                "mysecret",
+                { expiresIn: "1h" }
+              );
+
+              res.status(200).json({ result, token });
+            });
+          }
+        });
+      })
+      .catch((err) => {
+        res.status(400).json({ message: "Invalid access token!" });
+      });
   } else {
     const { email, password, firstName, lastName } = req.body;
     const sql = "SELECT * FROM pyra_user WHERE email= ?";
